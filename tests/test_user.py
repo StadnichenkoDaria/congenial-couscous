@@ -1,86 +1,93 @@
+import json
+
 import pytest
-from app.data import users_db
 from fastapi import status
+import requests
+from models.user import User
 
 
-def test_get_users(api):
-    response = api.get_users()
-    assert response.status_code == 200
-    data = response.json()
-    assert data['page'] == 1
-    assert data['per_page'] == 6
-    assert data['total'] == len(users_db)
-    assert data['total_pages'] == 1
-    assert len(data['data']) == 6
+@pytest.fixture
+def users(app_url):
+    response = requests.get(f"{app_url}/api/users/")
+    assert response.status_code == status.HTTP_200_OK
+    return response.json()
 
 
-@pytest.mark.parametrize("user_id, expected_email", [
-    (2, "janet.weaver@reqres.in"),
-    (4, "eve.holt@reqres.in"),
-    (6, "tracey.ramos@reqres.in"),
-])
-def test_user_data(user_id, expected_email, api):
-    response = api.get_user(user_id)
-    assert response.status_code == 200, f"Expected status code 200, but got {response.status_code}"
-
-    body = response.json()
-    assert "data" in body, f"Response body does not contain 'data' key"
-
-    data = body["data"]
-    assert data["id"] == user_id, f"Expected id {user_id}, but got {data['id']}"
-    assert data["email"] == expected_email, f"Expected email {expected_email}, but got {data['email']}"
+def test_users(app_url):
+    response = requests.get(f"{app_url}/api/users/")
+    assert response.status_code == status.HTTP_200_OK
+    users = response.json()
+    for user in users:
+        User.model_validate(user)
 
 
-def test_create_user(client, api):
-    payload = {
+def test_users_no_duplicates(users):
+    users_ids = [user["id"] for user in users]
+    assert len(users_ids) == len(set(users_ids))
+
+
+@pytest.mark.parametrize("user_id", [1, 6, 12])
+def test_user(app_url, user_id):
+    response = requests.get(f"{app_url}/api/users/{user_id}")
+    assert response.status_code == status.HTTP_200_OK
+
+    user = response.json()
+    User.model_validate(user)
+
+
+@pytest.mark.parametrize("user_id", [13])
+def test_user_nonexistent_values(app_url, user_id):
+    response = requests.get(f"{app_url}/api/users/{user_id}")
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.parametrize("user_id", [-1, 0, "qwerty"])
+def test_user_invalid_values(app_url, user_id):
+    response = requests.get(f"{app_url}/api/users/{user_id}")
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+def test_create_user(app_url):
+    new_user = {
         "name": "morpheus",
         "job": "leader"
     }
-    response = api.create_user(payload)
-    assert response.status_code == status.HTTP_201_CREATED, f"Expected status code 201, but got {response.status_code}"
 
-    body = response.json()
+    response = requests.post(f"{app_url}/api/users", json=new_user)
+    assert response.status_code == status.HTTP_201_CREATED
 
-    assert body["name"] == payload["name"], f"Expected name '{payload['name']}', but got '{body['data']['name']}'"
-    assert body["job"] == payload["job"], f"Expected job '{payload['job']}', but got '{body['data']['job']}'"
+    response_data = response.json()
+    assert response_data["name"] == new_user["name"]
+    assert response_data["job"] == new_user["job"]
+    assert "id" in response_data
+    assert "createdAt" in response_data
+
+    with open("../users.json", "r") as f:
+        users = json.load(f)
+        assert len(users) == 13
 
 
-def test_update_user_put(client, api):
-    user_id = 2
-    payload = {
-        "name": "morpheus",
-        "job": "zion resident"
+def test_update_user_put(app_url):
+    user_id = 1
+    get_response = requests.get(f"{app_url}/api/users/{user_id}")
+    original_user = get_response.json()
+
+    updated_data = {
+        "id": user_id,
+        "email": original_user["email"],
+        "first_name": "George Updated",
+        "last_name": original_user["last_name"],
+        "avatar": original_user["avatar"]
     }
+    update_response = requests.put(f"{app_url}/api/users/{user_id}", json=updated_data)
+    assert update_response.status_code == status.HTTP_200_OK
 
-    response = api.update_user_put(user_id, payload)
-    assert response.status_code == status.HTTP_200_OK, f"Expected status code 200, but got {response.status_code}"
-
-    body = response.json()
-
-    assert body["name"] == payload["name"], f"Expected name '{payload['name']}', but got '{body['name']}'"
-    assert body["job"] == payload["job"], f"Expected job '{payload['job']}', but got '{body['job']}'"
+    get_updated_response = requests.get(f"{app_url}/api/users/{user_id}")
+    updated_user = get_updated_response.json()
+    assert updated_user["first_name"] == "George Updated"
 
 
-def test_update_user_patch(client, api):
-    user_id = 2
-    payload = {
-        "name": "morpheus",
-        "job": "zion resident"
-    }
-
-    response = api.update_user_patch(user_id, payload)
-    assert response.status_code == 200, f"Expected status code 200, but got {response.status_code}"
-
-    body = response.json()
-    assert "name" in body, "Response body does not contain 'name' field"
-    assert "job" in body, "Response body does not contain 'job' field"
-    assert "updatedAt" in body, "Response body does not contain 'updatedAt' field"
-    assert body["name"] == payload["name"], f"Expected name '{payload['name']}', but got '{body['name']}'"
-    assert body["job"] == payload["job"], f"Expected job '{payload['job']}', but got '{body['job']}'"
-
-
-def test_delete_user(client, api):
-    user_id = 2
-
-    response = api.delete_user(user_id)
-    assert response.status_code == 204, f"Expected status code 204, but got {response.status_code}"
+def test_delete_user(app_url):
+    user_id = 1
+    response = requests.delete(f"{app_url}/api/users/{user_id}")
+    assert response.status_code == status.HTTP_204_NO_CONTENT

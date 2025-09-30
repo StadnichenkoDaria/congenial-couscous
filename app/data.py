@@ -1,4 +1,4 @@
-from .models import User, Support
+from models.user import User
 
 users_db = {
     1: User(
@@ -44,8 +44,3 @@ users_db = {
         avatar="https://reqres.in/img/faces/6-image.jpg"
     )
 }
-
-example_support = Support(
-    url="https://contentcaddy.io?utm_source=reqres&utm_medium=json&utm_campaign=referral",
-    text="Tired of writing endless social media content? Let Content Caddy generate it for you."
-)
