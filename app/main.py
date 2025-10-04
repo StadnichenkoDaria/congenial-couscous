@@ -6,7 +6,7 @@ from fastapi_pagination import add_pagination, paginate, Params
 from fastapi import FastAPI, status, HTTPException, Query
 from models.app_status import AppStatus
 from models.login import Login
-from models.user import User, CreateUser
+from models.user import User
 from datetime import datetime
 
 app = FastAPI()
@@ -67,17 +67,31 @@ def login(credentials: Login) -> dict:
 
 
 @app.post("/api/users", status_code=status.HTTP_201_CREATED)
-def create_user(user: CreateUser):
-    new_id = str(len(users) + 1)
+def create_user(user: User):
+    new_id = max((u.id for u in users), default=0) + 1
     created_at = datetime.now().isoformat() + "Z"
 
-    new_user = {**user.dict(), "id": new_id, "createdAt": created_at}
+    new_user = User(
+        id=new_id,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        avatar=user.avatar
+    )
     users.append(new_user)
 
     with open("../users.json", "w") as f:
-        json.dump(users, f)
+        users_dict = [u.model_dump(mode='json') for u in users]  # mode='json' конвертирует HttpUrl автоматически
+        json.dump(users_dict, f, indent=2)
 
-    return new_user
+    return {
+        "id": new_user.id,
+        "email": new_user.email,
+        "first_name": new_user.first_name,
+        "last_name": new_user.last_name,
+        "avatar": str(new_user.avatar),
+        "createdAt": created_at
+    }
 
 
 @app.put("/api/users/{user_id}", status_code=status.HTTP_200_OK)
@@ -109,15 +123,24 @@ def delete_user(user_id: int):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     users.pop(user_id - 1)
+
+    with open("../users.json", "w") as f:
+        users_dict = [u.model_dump(mode='json') for u in users]
+        json.dump(users_dict, f, indent=2)
+
     return None
 
 
 if __name__ == "__main__":
-    with open("../users.json") as f:
-        users = json.load(f)
+    try:
+        with open("../users.json") as f:
+            users = [User.model_validate(user) for user in json.load(f)]
+    except (FileNotFoundError, json.JSONDecodeError):
+        users = []
+        print("Starting with empty users list")
+    except Exception as e:
+        users = []
+        print(f"Error loading users: {e}")
 
-    for user in users:
-        User.model_validate(user)
-
-    print("Users loaded")
+    print(f"Loaded {len(users)} users")
     uvicorn.run(app, host="0.0.0.0", port=8000)

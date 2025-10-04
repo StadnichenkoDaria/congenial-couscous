@@ -1,14 +1,19 @@
-from pydantic import BaseModel, EmailStr, HttpUrl
+from typing import Optional
+
+from pydantic import BaseModel, EmailStr, HttpUrl, Field
 
 
 class User(BaseModel):
-    id: int
+    id: Optional[int] = None
     email: EmailStr
     first_name: str
     last_name: str
     avatar: HttpUrl
 
 
-class CreateUser(BaseModel):
-    name: str
-    job: str
+class UsersResponse(BaseModel):
+    items: list[User]
+    total: int
+    page: int
+    size: int
+    pages: int
