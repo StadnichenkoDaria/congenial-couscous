@@ -1,8 +1,7 @@
 import json
-from typing import Optional
 
 import uvicorn
-from fastapi_pagination import add_pagination, paginate, Params
+from fastapi_pagination import Page, add_pagination, paginate, Params
 from fastapi import FastAPI, status, HTTPException, Query
 from models.app_status import AppStatus
 from models.login import Login
@@ -25,21 +24,9 @@ def get_status() -> AppStatus:
     return AppStatus(users=bool(users))
 
 
-@app.get('/api/users', status_code=status.HTTP_200_OK)
-def get_users(
-        page: Optional[int] = Query(None, ge=1),
-        size: Optional[int] = Query(None, ge=1)
-):
-    if page is None and size is None:
-        params = Params(page=1, size=len(users))
-        return paginate(users, params)
-
-    if page is not None and size is None:
-        params = Params(page=page, size=6)
-        return paginate(users, params)
-
-    params = Params(page=page or 1, size=size or 6)
-    return paginate(users, params)
+@app.get('/api/users', response_model=Page[User])
+def get_users():
+    return paginate(users)
 
 
 @app.get("/api/users/{user_id}", status_code=status.HTTP_200_OK)
@@ -51,23 +38,26 @@ def get_user(user_id: int) -> User:
     return users[user_id - 1]
 
 
-@app.post("/api/login", status_code=status.HTTP_200_OK)
+@app.post("/api/login", status_code=status.HTTP_201_CREATED)
 def login(credentials: Login) -> dict:
     valid_login = "eve.holt@reqres.in"
     valid_password = "cityslicka"
     token = "QpwL5tke4Pnpja7X4"
-    if not credentials.password:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 
     if credentials.email == valid_login and credentials.password == valid_password:
-        access_token = token
-        return {"token": access_token}
+        return {"token": token}
     else:
         raise HTTPException(status_code=401, detail="Invalid login credentials")
 
 
 @app.post("/api/users", status_code=status.HTTP_201_CREATED)
 def create_user(user: User):
+    if user.id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ID should not be provided when creating a user"
+        )
+
     new_id = max((u.id for u in users), default=0) + 1
     created_at = datetime.now().isoformat() + "Z"
 
@@ -81,7 +71,7 @@ def create_user(user: User):
     users.append(new_user)
 
     with open("../users.json", "w") as f:
-        users_dict = [u.model_dump(mode='json') for u in users]  # mode='json' конвертирует HttpUrl автоматически
+        users_dict = [u.model_dump(mode='json') for u in users]
         json.dump(users_dict, f, indent=2)
 
     return {

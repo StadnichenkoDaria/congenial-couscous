@@ -50,8 +50,8 @@ def test_user_invalid_values(app_url, user_id):
 
 @pytest.mark.parametrize("page, expected_size, expected_page", [
     (None, 12, 1),  # без параметра page
-    (1, 6, 1),  # page=1
-    (2, 6, 2),  # page=2
+    (1, 12, 1),  # page=1
+    (2, 0, 2),  # page=2
 ])
 def test_pagination_items_count_matches_size(app_url, page, expected_size, expected_page):
     params = {'page': page} if page is not None else {}
@@ -71,8 +71,8 @@ def test_pagination_out_of_range_pages_returns_empty_items(app_url, page):
     assert users_response.items == []
     assert users_response.total == 12
     assert users_response.page == page
-    assert users_response.size == 6
-    assert users_response.pages == 2
+    assert users_response.size == 50
+    assert users_response.pages == 1
 
 
 def test_pagination_invalid_page_string_returns_parsing_error(app_url):
@@ -105,8 +105,10 @@ def test_pagination_different_sizes_correct_pages_calculation(app_url, size, exp
 def test_create_user(app_url):
     response = requests.get(f"{app_url}/api/users")
     initial_data = response.json()
-    initial_count = initial_data['total']
-    expected_new_id = initial_count + 1
+    all_users = initial_data['items']
+    max_id = max(user['id'] for user in all_users)
+    expected_new_id = max_id + 1
+    initial_count = len(all_users)
 
     new_user = {
         "email": "morpheus@reqres.in",

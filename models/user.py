@@ -1,10 +1,8 @@
-from typing import Optional
-
-from pydantic import BaseModel, EmailStr, HttpUrl, Field
+from pydantic import BaseModel, EmailStr, HttpUrl
 
 
 class User(BaseModel):
-    id: Optional[int] = None
+    id: int | None = None
     email: EmailStr
     first_name: str
     last_name: str
