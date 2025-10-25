@@ -1,117 +1,136 @@
-from fastapi.responses import JSONResponse
-from app.data import users_db, example_support
-from app.models import ResponseModel, UserCreate, LoginRequest, UsersResponse, UserCreateResponse, UserUpdateResponse, \
-    UserUpdate
-from fastapi import FastAPI, status, HTTPException
+import json
+
+import uvicorn
+from fastapi_pagination import Page, add_pagination, paginate, Params
+from fastapi import FastAPI, status, HTTPException, Query
+from models.app_status import AppStatus
+from models.login import Login
+from models.user import User
 from datetime import datetime
-import uuid
 
 app = FastAPI()
+add_pagination(app)
+
+users: list[User] = []
 
 
-@app.get("/api/users", response_model=UsersResponse)
-def get_users(page: int = 1, per_page: int = 6):
-    total_users = len(users_db)
-    total_pages = (total_users + per_page - 1) // per_page
-
-    if page < 1 or page > total_pages:
-        raise HTTPException(status_code=404, detail="Page not found")
-
-    start = (page - 1) * per_page
-    end = start + per_page
-    users_list = list(users_db.values())[start:end]
-
-    return UsersResponse(
-        page=page,
-        per_page=per_page,
-        total=total_users,
-        total_pages=total_pages,
-        data=users_list,
-        support=example_support
-    )
+@app.get("/")
+def read_root():
+    return {"message": "hello"}
 
 
-@app.get("/api/users/{user_id}", response_model=ResponseModel)
-def get_user(user_id: int):
-    user = users_db.get(user_id)
-    if user is None:
-        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={})
-
-    return ResponseModel(data=user, support=example_support)
+@app.get("/status", status_code=status.HTTP_200_OK)
+def get_status() -> AppStatus:
+    return AppStatus(users=bool(users))
 
 
-@app.post("/api/login")
-def login(login_request: LoginRequest):
+@app.get('/api/users', response_model=Page[User])
+def get_users():
+    return paginate(users)
+
+
+@app.get("/api/users/{user_id}", status_code=status.HTTP_200_OK)
+def get_user(user_id: int) -> User:
+    if user_id < 1:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid user id")
+    if user_id > len(users):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return users[user_id - 1]
+
+
+@app.post("/api/login", status_code=status.HTTP_201_CREATED)
+def login(credentials: Login) -> dict:
     valid_login = "eve.holt@reqres.in"
     valid_password = "cityslicka"
     token = "QpwL5tke4Pnpja7X4"
-    if not login_request.password:
-        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"error": "Missing password"})
 
-    if login_request.email == valid_login and login_request.password == valid_password:
-        access_token = token
-        return {"token": access_token}
+    if credentials.email == valid_login and credentials.password == valid_password:
+        return {"token": token}
     else:
         raise HTTPException(status_code=401, detail="Invalid login credentials")
 
 
-@app.post("/api/users", response_model=UserCreateResponse, status_code=status.HTTP_201_CREATED)
-def create_user(user: UserCreate):
-    new_id = str(uuid.uuid4().int)[:6]
-    new_user = {
-        "name": user.name,
-        "job": user.job,
-        "id": new_id,
-        "createdAt": datetime.utcnow().isoformat() + "Z"
+@app.post("/api/users", status_code=status.HTTP_201_CREATED)
+def create_user(user: User):
+    if user.id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ID should not be provided when creating a user"
+        )
+
+    new_id = max((u.id for u in users), default=0) + 1
+    created_at = datetime.now().isoformat() + "Z"
+
+    new_user = User(
+        id=new_id,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        avatar=user.avatar
+    )
+    users.append(new_user)
+
+    with open("../users.json", "w") as f:
+        users_dict = [u.model_dump(mode='json') for u in users]
+        json.dump(users_dict, f, indent=2)
+
+    return {
+        "id": new_user.id,
+        "email": new_user.email,
+        "first_name": new_user.first_name,
+        "last_name": new_user.last_name,
+        "avatar": str(new_user.avatar),
+        "createdAt": created_at
     }
-    return UserCreateResponse(**new_user)
 
 
-@app.put("/api/users/{user_id}", response_model=UserUpdateResponse)
-def update_user(user_id: int, user: UserUpdate):
-    if user_id not in users_db:
+@app.put("/api/users/{user_id}", status_code=status.HTTP_200_OK)
+def update_user(user_id: int, user: User) -> User:
+    if user_id < 1 or user_id > len(users):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    current_user = users_db[user_id]
-    current_user.name = user.name
-    current_user.job = user.job
-
-    updated_at = datetime.utcnow().isoformat() + "Z"
-
-    return UserUpdateResponse(
-        name=user.name,
-        job=user.job,
-        updatedAt=updated_at
-    )
+    users[user_id - 1] = user
+    return user
 
 
-@app.patch("/api/users/{user_id}", response_model=UserUpdateResponse)
-def patch_update_user(user_id: int, user: UserUpdate):
-    if user_id not in users_db:
+@app.patch("/api/users/{user_id}", status_code=status.HTTP_200_OK)
+def partial_update_user(user_id: int, user: User) -> User:
+    if user_id < 1 or user_id > len(users):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    current_user = users_db[user_id]
-    current_user.name = user.name
-    current_user.job = user.job
+    existing_user = users[user_id - 1]
+    if user.name:
+        existing_user.name = user.name
+    if user.email:
+        existing_user.email = user.email
 
-    updated_at = datetime.utcnow().isoformat() + "Z"
-
-    return UserUpdateResponse(
-        name=user.name,
-        job=user.job,
-        updatedAt=updated_at
-    )
+    return existing_user
 
 
 @app.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(user_id: int):
-    if user_id not in users_db:
+    if user_id < 1 or user_id > len(users):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    del users_db[user_id]
-    return JSONResponse(status_code=status.HTTP_204_NO_CONTENT, content={})
+
+    users.pop(user_id - 1)
+
+    with open("../users.json", "w") as f:
+        users_dict = [u.model_dump(mode='json') for u in users]
+        json.dump(users_dict, f, indent=2)
+
+    return None
 
 
 if __name__ == "__main__":
-    import uvicorn
+    try:
+        with open("../users.json") as f:
+            users = [User.model_validate(user) for user in json.load(f)]
+    except (FileNotFoundError, json.JSONDecodeError):
+        users = []
+        print("Starting with empty users list")
+    except Exception as e:
+        users = []
+        print(f"Error loading users: {e}")
 
+    print(f"Loaded {len(users)} users")
     uvicorn.run(app, host="0.0.0.0", port=8000)
