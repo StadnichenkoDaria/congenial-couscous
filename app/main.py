@@ -13,6 +13,7 @@ app.include_router(root.router)
 app.include_router(login.router)
 add_pagination(app)
 
+
 if __name__ == "__main__":
     try:
         with open("../users.json") as f:
