@@ -2,6 +2,7 @@ import json
 import uvicorn
 from fastapi_pagination import add_pagination
 from fastapi import FastAPI
+
 from app.models.user import User
 from routers import status, users, root, login
 from database import users_db
