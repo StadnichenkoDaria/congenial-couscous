@@ -1,4 +1,4 @@
-from models.user import User
+from app.models.user import User
 
 users_db = {
     1: User(

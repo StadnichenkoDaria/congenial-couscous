@@ -4,7 +4,7 @@ import os
 import pytest
 from fastapi import status
 import requests
-from models.user import User, UsersResponse
+from app.models.user import User, UsersResponse
 
 
 @pytest.fixture
