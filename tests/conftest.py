@@ -9,11 +9,11 @@ def api():
     return ReqresAPI()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def envs():
     dotenv.load_dotenv()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def app_url():
     return os.getenv("APP_URL")
