@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 from fastapi import status
@@ -8,8 +9,8 @@ from app.models.user import User, UsersResponse
 
 @pytest.fixture(scope="module")
 def fill_test_data(app_url):
-    with open("../users.json") as f:
-        test_data_users = json.load(f)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    test_data_users = os.path.join(current_dir, "..", "users.json")
 
     api_users = []
     for user in test_data_users:
