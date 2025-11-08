@@ -1,0 +1,25 @@
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  tests:
+    name: Test app
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'poetry'
+      - run: pip install poetry
+      - run: poetry install --no-interaction --no-ansi
+      - run: docker compose up -d --build
+      - run: poetry run pytest tests -v
+
+      - run: docker compose logs up
+        if: always()

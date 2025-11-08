@@ -31,6 +31,7 @@ build-backend = "poetry.core.masonry.api"
 package-mode = false
 
 [tool.pytest.ini_options]
+pythonpath = '.'
 filterwarnings = [
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
