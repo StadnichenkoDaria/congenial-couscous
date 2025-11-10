@@ -22,7 +22,7 @@ jobs:
       - run: docker compose up -d
       - run: poetry run pytest tests -v
         env:
-          APP_URL: http://localhost:8000
+          APP_URL: http://127.0.0.1:8000
 
       - run: docker compose logs up
         if: always()
